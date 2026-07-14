@@ -11,12 +11,14 @@
         #game-container { flex: 7; position: relative; background: #111424; overflow: hidden; border-right: 4px solid #e94560; }
         canvas { display: block; width: 100%; height: 100%; }
         
-        /* 메뉴 버튼에 가려지지 않도록 left를 20px에서 120px로 이동 */
+        /* 높이 정보 UI */
         #ui-height { position: absolute; top: 20px; left: 120px; font-size: 24px; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); z-index: 10; }
+        /* 최고 높이 기록 UI 추가 */
+        #ui-max-height { position: absolute; top: 55px; left: 120px; font-size: 16px; font-weight: bold; color: #ffd700; text-shadow: 1px 1px 2px rgba(0,0,0,0.8); z-index: 10; }
         
         #cheat-icon { cursor: pointer; display: inline-block; transition: transform 0.1s; }
         #cheat-icon:active { transform: scale(0.8); }
-        #warning-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,0,0,0.5); color: white; font-size: 40px; display: none; align-items: center; justify-content: center; font-weight: bold; text-align: center; z-index: 20; }
+        #warning-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,0,0,0.6); color: white; font-size: 36px; display: none; align-items: center; justify-content: center; font-weight: bold; text-align: center; z-index: 20; }
 
         #right-panel { flex: 3; display: flex; flex-direction: column; background: #16213e; min-width: 320px; }
         
@@ -24,7 +26,8 @@
         #chances { font-size: 20px; color: #ffd700; font-weight: bold; margin-bottom: 10px; }
         #question-text { font-size: 18px; margin-bottom: 10px; text-align: center; word-break: keep-all; min-height: 50px; }
         #triangle-canvas { background: white; border-radius: 8px; margin-bottom: 15px; }
-        .answer-btn { width: 100%; padding: 15px; margin: 5px 0; background: #e94560; color: white; border: none; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        
+        .answer-btn { width: 100%; padding: 10px 15px; min-height: 54px; margin: 5px 0; background: #e94560; color: white; border: none; border-radius: 8px; font-size: 20px; font-weight: bold; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center; }
         .answer-btn:active { background: #ff2e4c; transform: scale(0.95); }
         .answer-btn:disabled { background: #555; color: #888; cursor: not-allowed; }
 
@@ -39,7 +42,7 @@
     </style>
 </head>
 <body>
-        <!-- ================= 메뉴 바 시작 ================= -->
+            <!-- ================= 메뉴 바 시작 ================= -->
     <style>
         /* 메뉴 열기 버튼 스타일 */
         .openbtn-container {
@@ -140,6 +143,7 @@
 
     <div id="game-container">
         <div id="ui-height"><span id="cheat-icon">🍩</span> <span id="current-h">0</span>m / <span id="target-h">100</span>m</div>
+        <div id="ui-max-height">최고 기록: <span id="max-h">0</span>m</div>
         <div id="warning-overlay">위험 구역 도착!<br>2초 뒤 강제 문제가 출제됩니다!</div>
         <canvas id="gameCanvas"></canvas>
         <div id="gauge-container"><div id="gauge-fill"></div></div>
@@ -168,7 +172,7 @@
 
 <script>
 /** ==========================================
- *  1. 게임 코어 및 치트 시스템 (순환)
+ *  1. 게임 코어 변수 및 상태
  *  ========================================== */
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -187,12 +191,17 @@ resize();
 
 let cameraY = 0;
 let jumpChances = 0;
+let maxHeightM = 0; // 최고 높이 기록
 let keys = { left: false, right: false, jump: false };
 let jumpChargeTime = 0;
 let isCharging = false;
 let globalWind = { force: 0, direction: 1, timer: 0 };
 let fireworks = [];
 let gameWon = false;
+
+// 빨간 블럭 이벤트 관리 변수
+let isRedBlockEvent = false;
+let redBlockTimer = null;
 
 // 치트 모드: 0=기본, 1=무한점프(🎂), 2=점검모드(🍬)
 let cheatState = 0;
@@ -204,7 +213,7 @@ function handleCheatClick(e) {
     e.preventDefault();
     cheatClicks++;
     if (cheatClicks >= 5) {
-        cheatState = (cheatState + 1) % 3; // 0, 1, 2 순환
+        cheatState = (cheatState + 1) % 3; 
         cheatClicks = 0;
         
         const icons = ['🍩', '🎂', '🍬'];
@@ -219,7 +228,7 @@ function handleCheatClick(e) {
 }
 
 /** ==========================================
- *  2. 플레이어 객체
+ *  2. 플레이어 물리 및 렌더링
  *  ========================================== */
 const player = {
     x: gameWidth / 2, y: 0, width: 34, height: 56,
@@ -228,21 +237,18 @@ const player = {
     walkTick: 0,
     
     update() {
-        // [점검 모드 물리 법칙]
         if (cheatState === 2) {
             this.walkTick = 0;
-            // 공중에서도 자유 좌우 이동
             if (keys.left) { this.vx = -this.speed; this.faceRight = false; }
             else if (keys.right) { this.vx = this.speed; this.faceRight = true; }
             else { this.vx = 0; }
 
-            // 비행 (점프 누르면 상승, 떼면 천천히 하강)
             if (keys.jump) {
                 this.vy = -6; 
                 this.isJumping = true;
                 this.onGround = false;
             } else {
-                this.vy += 0.2; // 수중처럼 천천히 떨어짐
+                this.vy += 0.2; 
                 if (this.vy > 3.5) this.vy = 3.5;
             }
 
@@ -252,9 +258,8 @@ const player = {
             if (this.x < 0) { this.x = 0; this.vx = 0; }
             if (this.x + this.width > gameWidth) { this.x = gameWidth - this.width; this.vx = 0; }
         } 
-        // [기본 모드 물리 법칙]
         else {
-            if (this.onGround && !isCharging) {
+            if (this.onGround && !isCharging && !isRedBlockEvent) {
                 if (keys.left) { this.vx = -this.speed; this.faceRight = false; this.walkTick += 0.2; }
                 else if (keys.right) { this.vx = this.speed; this.faceRight = true; this.walkTick += 0.2; }
                 else { this.vx = 0; this.walkTick = 0; }
@@ -262,7 +267,6 @@ const player = {
                 this.walkTick = 0;
             }
 
-            // 바람 영향
             if (!this.onGround && this.y < -500 && this.y > -2000) {
                 this.vx += globalWind.force * globalWind.direction; 
             }
@@ -271,7 +275,6 @@ const player = {
             this.x += this.vx;
             this.y += this.vy;
 
-            // 벽 충돌 튕기기
             if (this.x < 0) { this.x = 0; this.vx = Math.abs(this.vx) * 0.8; }
             if (this.x + this.width > gameWidth) { this.x = gameWidth - this.width; this.vx = -Math.abs(this.vx) * 0.8; }
         }
@@ -316,7 +319,7 @@ const player = {
     },
 
     jump(powerRatio) {
-        if (!this.onGround || cheatState === 2) return;
+        if (!this.onGround || cheatState === 2 || isRedBlockEvent) return;
         let jumpPower = 13 + (11 * powerRatio);
         this.vy = -jumpPower;
         this.onGround = false;
@@ -341,7 +344,7 @@ const player = {
 };
 
 /** ==========================================
- *  3. 맵 및 충돌
+ *  3. 맵 및 충돌 체크
  *  ========================================== */
 const platforms = [];
 
@@ -391,7 +394,6 @@ function checkCollisions() {
                 player.onGround = true;
                 player.isJumping = false;
                 
-                // 점검 모드가 아닐 때만 빨간 블록 이벤트 발동
                 if (p.type === 'red' && !wasOnGround && cheatState !== 2) {
                     triggerRedBlockEvent();
                 }
@@ -404,14 +406,15 @@ function checkCollisions() {
     }
 
     if (player.onGround && !wasOnGround) {
-        if (jumpChances === 0 && cheatState === 0) {
+        // 기회가 0이고, 치트가 아니고, 빨간블럭 이벤트 중이 아닐 때만 일반 문제 출제
+        if (jumpChances === 0 && cheatState === 0 && !isRedBlockEvent) {
             generateProblem();
         }
     }
 }
 
 /** ==========================================
- *  4. 그리기 로직 (루프)
+ *  4. 메인 그리기 루프
  *  ========================================== */
 setInterval(() => {
     globalWind.direction = Math.random() > 0.5 ? 1 : -1;
@@ -426,8 +429,8 @@ function update(time) {
     player.update();
     checkCollisions();
 
-    // 점프 게이지는 점검 모드(2)에서는 보이지 않음
-    if (isCharging && player.onGround && cheatState !== 2 && (jumpChances > 0 || cheatState === 1)) {
+    // 점프 게이지 표시
+    if (isCharging && player.onGround && !isRedBlockEvent && cheatState !== 2 && (jumpChances > 0 || cheatState === 1)) {
         jumpChargeTime += dt;
         if (jumpChargeTime > 1000) jumpChargeTime = 1000;
         gaugeContainer.style.display = 'block';
@@ -440,7 +443,7 @@ function update(time) {
     if (targetCameraY < cameraY) cameraY += (targetCameraY - cameraY) * 0.15; 
     if (player.y > cameraY + gameHeight * 0.8) cameraY = player.y - gameHeight * 0.8;
 
-    // 1. 성벽 패럴랙스 배경
+    // 배경 그리기
     ctx.fillStyle = '#111424'; 
     ctx.fillRect(0, 0, gameWidth, gameHeight);
     
@@ -459,16 +462,12 @@ function update(time) {
         }
     }
 
-    // 2. 바람 이펙트 구역 (카메라가 비출 때 무조건 항상 렌더링되게 수정)
+    // 바람 이펙트
     let windTop = -2000 - cameraY;
     let windBottom = -500 - cameraY;
-    
     if (windTop < gameHeight && windBottom > 0) {
-        // 바람 구역 오버레이 배경 표시
         ctx.fillStyle = "rgba(100, 150, 255, 0.05)";
         ctx.fillRect(0, windTop, gameWidth, 1500);
-
-        // 바람 실선 이펙트
         ctx.strokeStyle = "rgba(255, 255, 255, 0.25)";
         ctx.lineWidth = 3;
         ctx.beginPath();
@@ -481,7 +480,7 @@ function update(time) {
         ctx.stroke();
     }
 
-    // 3. 발판 그리기
+    // 발판 그리기
     platforms.forEach(p => {
         let drawY = p.y - cameraY;
         if (drawY < -50 || drawY > gameHeight + 50) return;
@@ -505,11 +504,10 @@ function update(time) {
             ctx.fillStyle = '#ffffff'; 
             ctx.fillRect(p.x, drawY, p.w, 8);
         } else if (p.type === 'goal') {
-            ctx.shadowBlur = 20; ctx.shadowColor = "#ffcc00";
-            ctx.fillStyle = '#4b382a';
-            ctx.beginPath(); ctx.arc(p.x + p.w/2, drawY, 20, 0, Math.PI*2); ctx.fill();
-            ctx.fillStyle = '#fff';
-            ctx.fillRect(p.x + p.w/2 - 10, drawY - 2, 20, 5);
+            // 진짜 초코파이(도넛 이모지) 렌더링
+            ctx.font = "40px Pretendard, Arial";
+            ctx.shadowBlur = 15; ctx.shadowColor = "#ffcc00";
+            ctx.fillText("🍩", p.x + p.w/2 - 20, drawY + 22);
             ctx.shadowBlur = 0;
         }
     });
@@ -517,10 +515,14 @@ function update(time) {
     player.draw();
     drawFireworks();
 
+    // 현재 높이 및 최고 높이 기록
     let currentHeightM = Math.floor(Math.max(0, (gameHeight - 20 - player.y) / 50));
+    if (currentHeightM > maxHeightM) maxHeightM = currentHeightM; // 최고 기록 갱신
+
     let targetHeightM = Math.floor((gameHeight - 20 - platforms[platforms.length-1].y) / 50);
     document.getElementById('current-h').innerText = currentHeightM;
     document.getElementById('target-h').innerText = targetHeightM;
+    document.getElementById('max-h').innerText = maxHeightM;
 
     requestAnimationFrame(update);
 }
@@ -533,7 +535,6 @@ function setupControls() {
         const el = document.getElementById(id);
         el.addEventListener('touchstart', (e) => { e.preventDefault(); keys[key] = true; el.classList.add('active'); });
         el.addEventListener('touchend', (e) => { e.preventDefault(); keys[key] = false; el.classList.remove('active'); });
-        // PC 테스트용 이벤트
         el.addEventListener('mousedown', () => { keys[key] = true; el.classList.add('active'); });
         el.addEventListener('mouseup', () => { keys[key] = false; el.classList.remove('active'); });
         el.addEventListener('mouseleave', () => { keys[key] = false; el.classList.remove('active'); });
@@ -544,8 +545,8 @@ function setupControls() {
     const jumpBtn = document.getElementById('jump-btn');
     const startJump = (e) => {
         if(e) e.preventDefault();
-        keys.jump = true; // 점검(비행) 모드 상승용 트리거
-        if (cheatState === 2) return;
+        keys.jump = true; 
+        if (cheatState === 2 || isRedBlockEvent) return; // 빨간 이벤트 중 점프 불가
 
         if (player.onGround && !isCharging && (jumpChances > 0 || cheatState === 1)) {
             isCharging = true;
@@ -555,8 +556,8 @@ function setupControls() {
     };
     const endJump = (e) => {
         if(e) e.preventDefault();
-        keys.jump = false; // 점검(비행) 모드 하강 전환
-        if (cheatState === 2) return;
+        keys.jump = false; 
+        if (cheatState === 2 || isRedBlockEvent) return;
 
         if (isCharging) {
             isCharging = false;
@@ -586,13 +587,26 @@ function setupControls() {
 setupControls();
 
 /** ==========================================
- *  6. 문제 생성 및 로직
+ *  6. 문제 생성 및 로직 (분수 렌더링 추가)
  *  ========================================== */
 let currentCorrectIndex = -1;
 let problemData = {};
 
-function generateProblem() {
-    if (cheatState !== 0 || jumpChances > 0) return; 
+// 문자열 내에 '/'가 있으면 시각적인 분수 HTML 구조로 반환하는 헬퍼 함수
+function formatFractionHTML(str) {
+    if (str.includes('/')) {
+        let parts = str.split('/');
+        return `<span style="display:inline-flex; flex-direction:column; align-items:center; vertical-align:middle; line-height:1; font-size:0.9em; margin: 0 4px;">
+                    <span style="border-bottom: 2px solid currentColor; padding: 2px 4px;">${parts[0]}</span>
+                    <span style="padding: 2px 4px;">${parts[1]}</span>
+                </span>`;
+    }
+    return str;
+}
+
+function generateProblem(force = false) {
+    // force가 아닐 때는 기회가 있거나 치트 중이면 출제 안 함
+    if (!force && (cheatState !== 0 || jumpChances > 0)) return; 
 
     const btns = document.querySelectorAll('.answer-btn');
     btns.forEach(btn => btn.disabled = false);
@@ -654,22 +668,39 @@ function generateProblem() {
     finalAnswers.sort(() => Math.random() - 0.5);
     currentCorrectIndex = finalAnswers.indexOf(correctAns);
 
-    for(let i=0; i<3; i++) btns[i].innerText = finalAnswers[i];
+    for(let i=0; i<3; i++) {
+        // 실제 분수 모양의 HTML로 변환하여 삽입
+        btns[i].innerHTML = formatFractionHTML(finalAnswers[i]);
+    }
 
     drawTriangleBox(problemData);
 }
 
 function checkAnswer(index) {
-    if (cheatState !== 0 || jumpChances > 0) return; 
+    if (!isRedBlockEvent && (cheatState !== 0 || jumpChances > 0)) return; 
     
     const btns = document.querySelectorAll('.answer-btn');
     btns.forEach(btn => btn.disabled = true); 
+    
+    // 타이머가 동작 중이라면 해제
+    if (redBlockTimer) {
+        clearTimeout(redBlockTimer);
+        redBlockTimer = null;
+    }
 
     if (index === currentCorrectIndex) {
-        jumpChances = 5;
+        if (isRedBlockEvent) {
+            // 빨간 블럭 이벤트 통과 시 (기존 기회는 유지/복구)
+            isRedBlockEvent = false;
+            document.getElementById('question-text').innerText = "정답입니다! 위험 구역을 무사히 넘겼습니다.";
+        } else {
+            // 일반 문제 통과 시
+            jumpChances = 5;
+            document.getElementById('question-text').innerText = "정답입니다! 점프 기회 5회를 얻었습니다.";
+        }
         updateUI();
-        document.getElementById('question-text').innerText = "정답입니다! 점프 기회 5회를 얻었습니다.";
     } else {
+        isRedBlockEvent = false;
         document.getElementById('question-text').innerText = "오답입니다! 벌칙으로 강제 점프합니다!";
         player.penaltyJump();
     }
@@ -679,17 +710,24 @@ function drawTriangleBox(data) {
     const tCanvas = document.getElementById('triangle-canvas');
     const tCtx = tCanvas.getContext('2d');
     tCtx.clearRect(0, 0, tCanvas.width, tCanvas.height);
+    let w = tCanvas.width;
+    let h = tCanvas.height;
 
-    if (!data) return;
+    if (!data) {
+        // 도형 없는 문제 안내글 표시
+        tCtx.fillStyle = "#888";
+        tCtx.font = "bold 18px Pretendard";
+        tCtx.textAlign = "center";
+        tCtx.fillText("문제만 보고 푸세요!", w/2, h/2 + 6);
+        tCtx.textAlign = "left";
+        return;
+    }
 
     tCtx.strokeStyle = "black";
     tCtx.lineWidth = 2;
     tCtx.fillStyle = "black";
     tCtx.font = "16px Pretendard";
 
-    let w = tCanvas.width;
-    let h = tCanvas.height;
-    
     let a, b;
     if (data.angle) {
         let rad = data.angle * Math.PI / 180;
@@ -730,7 +768,9 @@ function drawTriangleBox(data) {
 function updateUI() {
     document.getElementById('chance-count').innerText = jumpChances;
     const jumpBtn = document.getElementById('jump-btn');
-    if (cheatState === 0 && jumpChances <= 0) {
+    
+    // 점프 기회가 0이거나 이벤트 중이면 버튼 비활성화 시각 효과
+    if (cheatState === 0 && (jumpChances <= 0 || isRedBlockEvent)) {
         jumpBtn.style.background = '#555';
         jumpBtn.style.borderColor = '#333';
     } else {
@@ -740,20 +780,30 @@ function updateUI() {
 }
 
 /** ==========================================
- *  7. 특수 이벤트 처리
+ *  7. 특수 이벤트 처리 (타이머 중첩 해결)
  *  ========================================== */
 function triggerRedBlockEvent() {
+    if (isRedBlockEvent) return; // 이미 실행 중복 방지
+    isRedBlockEvent = true;
+    
     const overlay = document.getElementById('warning-overlay');
     overlay.style.display = 'flex';
     keys = { left: false, right: false, jump: false };
-    if(cheatState === 0) jumpChances = 0;
     
-    setTimeout(() => {
+    updateUI(); // 점프 버튼 잠금용
+
+    // 혹시 모를 기존 타이머 청소
+    if(redBlockTimer) clearTimeout(redBlockTimer);
+    
+    // 2초 경고 후 문제 강제 출제
+    redBlockTimer = setTimeout(() => {
         overlay.style.display = 'none';
-        if(cheatState === 0) generateProblem();
+        if (cheatState === 0) generateProblem(true); 
         
-        let timer = setTimeout(() => {
-            if(jumpChances === 0 && cheatState === 0 && player.onGround) {
+        // 10초 타이머 시작
+        redBlockTimer = setTimeout(() => {
+            if (isRedBlockEvent && cheatState === 0 && player.onGround) {
+                isRedBlockEvent = false;
                 document.getElementById('question-text').innerText = "시간 초과! 강제 점프합니다!";
                 player.penaltyJump();
             }
