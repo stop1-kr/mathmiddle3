@@ -68,6 +68,102 @@
     </style>
 </head>
 <body>
+        <!-- ================= 메뉴 바 시작 ================= -->
+    <style>
+        /* 메뉴 열기 버튼 스타일 */
+        .openbtn-container {
+            position: fixed;
+            top: 15px;
+            left: 15px;
+            z-index: 9998;
+        }
+        .openbtn {
+            font-size: 18px;
+            cursor: pointer;
+            background-color: #343a40;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 8px;
+            font-family: 'Pretendard', sans-serif;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            transition: 0.3s;
+        }
+        .openbtn:hover { background-color: #495057; }
+
+        /* 숨겨진 사이드바 스타일 */
+        .custom-sidebar {
+            height: 100%;
+            width: 0;
+            position: fixed;
+            z-index: 9999;
+            top: 0;
+            left: 0;
+            background-color: #212529;
+            overflow-x: hidden;
+            transition: 0.3s;
+            padding-top: 60px;
+            font-family: 'Pretendard', sans-serif;
+        }
+        .custom-sidebar .menu-title {
+            color: white;
+            padding: 0 30px 20px 30px;
+            font-size: 22px;
+            font-weight: bold;
+            border-bottom: 1px solid #495057;
+            margin-bottom: 10px;
+        }
+        .custom-sidebar a {
+            padding: 15px 15px 15px 30px;
+            text-decoration: none;
+            font-size: 18px;
+            color: #ced4da;
+            display: block;
+            transition: 0.3s;
+            white-space: nowrap;
+        }
+        .custom-sidebar a:hover {
+            color: #ffffff;
+            background-color: #495057;
+        }
+        .custom-sidebar .closebtn {
+            position: absolute;
+            top: 0;
+            right: 20px;
+            font-size: 36px;
+            padding: 0;
+            margin: 0;
+            border-bottom: none;
+        }
+        .custom-sidebar .closebtn:hover { background-color: transparent; }
+    </style>
+
+    <!-- 햄버거 메뉴 버튼 -->
+    <div class="openbtn-container">
+        <button class="openbtn" onclick="openSidebar()">☰ 메뉴</button>
+    </div>
+
+    <!-- 슬라이드 사이드바 -->
+    <div id="mySidebar" class="custom-sidebar">
+        <a href="javascript:void(0)" class="closebtn" onclick="closeSidebar()">×</a>
+        <div class="menu-title">중3 수학 웹앱 🚀</div>
+        
+        <!-- 아래 주소(href)가 선생님의 깃허브 저장소 주소와 폴더 구조에 맞춘 링크입니다 -->
+        <a href="/mathmiddle3/index.html">🏠 메인 (삼각비 학습)</a>
+        <a href="/mathmiddle3/pages/001_🎮_제곱근_떨어뜨리기.html">🎮 제곱근 떨어뜨리기</a>
+        <a href="/mathmiddle3/pages/002_🐛_이차함수_지렁이_게임.html">🐛 이차함수 지렁이 대모험</a>
+    </div>
+
+    <script>
+        function openSidebar() {
+            document.getElementById("mySidebar").style.width = "300px";
+        }
+        function closeSidebar() {
+            document.getElementById("mySidebar").style.width = "0";
+        }
+    </script>
+    <!-- ================= 메뉴 바 끝 ================= -->
+
     <div id="root"></div>
 
     <!-- data-presets="react-classic" 속성 추가 -->
