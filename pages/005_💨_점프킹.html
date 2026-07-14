@@ -10,13 +10,15 @@
         body { display: flex; width: 100vw; height: 100vh; background-color: #1a1a2e; color: white; overflow: hidden; touch-action: none; }
         
         /* 왼쪽 게임 화면 */
-        #game-container { flex: 7; position: relative; background: #0f3460; overflow: hidden; border-right: 4px solid #e94560; }
+        #game-container { flex: 7; position: relative; background: #111424; overflow: hidden; border-right: 4px solid #e94560; }
         canvas { display: block; width: 100%; height: 100%; }
         #ui-height { position: absolute; top: 20px; left: 20px; font-size: 24px; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); z-index: 10; }
+        #cheat-icon { cursor: pointer; display: inline-block; transition: transform 0.1s; }
+        #cheat-icon:active { transform: scale(0.8); }
         #warning-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,0,0,0.5); color: white; font-size: 40px; display: none; align-items: center; justify-content: center; font-weight: bold; text-align: center; z-index: 20; }
 
         /* 오른쪽 UI 패널 */
-        #right-panel { flex: 3; display: flex; flex-direction: column; background: #16213e; min-width: 300px; }
+        #right-panel { flex: 3; display: flex; flex-direction: column; background: #16213e; min-width: 320px; }
         
         /* 문제 영역 */
         #problem-area { flex: 6; padding: 20px; display: flex; flex-direction: column; align-items: center; border-bottom: 2px solid #533483; }
@@ -29,13 +31,13 @@
 
         /* 조작 영역 */
         #control-area { flex: 4; display: flex; padding: 20px; align-items: center; justify-content: space-between; }
-        .d-pad { display: flex; gap: 10px; }
-        .ctrl-btn { width: 70px; height: 70px; background: rgba(255,255,255,0.2); border: 2px solid white; border-radius: 15px; font-size: 30px; color: white; display: flex; justify-content: center; align-items: center; cursor: pointer; }
+        .d-pad { display: flex; gap: 20px; /* 버튼 사이 간격 넓힘 */ }
+        .ctrl-btn { width: 90px; height: 90px; /* 버튼 크기 키움 */ background: rgba(255,255,255,0.2); border: 2px solid white; border-radius: 15px; font-size: 40px; color: white; display: flex; justify-content: center; align-items: center; cursor: pointer; }
         .ctrl-btn:active, .ctrl-btn.active { background: rgba(255,255,255,0.5); }
-        #jump-btn { width: 90px; height: 90px; border-radius: 50%; background: #e94560; border: 4px solid #ff2e4c; font-weight: bold; font-size: 20px; }
+        #jump-btn { width: 100px; height: 100px; border-radius: 50%; background: #e94560; border: 4px solid #ff2e4c; font-weight: bold; font-size: 22px; }
         
         /* 게이지 바 */
-        #gauge-container { position: absolute; bottom: 120px; right: 20px; width: 20px; height: 150px; background: rgba(0,0,0,0.5); border: 2px solid white; border-radius: 10px; overflow: hidden; display: none; }
+        #gauge-container { position: absolute; bottom: 120px; right: 20px; width: 25px; height: 160px; background: rgba(0,0,0,0.5); border: 2px solid white; border-radius: 12px; overflow: hidden; display: none; }
         #gauge-fill { width: 100%; height: 0%; background: linear-gradient(to top, #00ff00, #ff0000); position: absolute; bottom: 0; }
     </style>
 </head>
@@ -43,7 +45,7 @@
 
     <!-- 왼쪽 게임 캔버스 -->
     <div id="game-container">
-        <div id="ui-height">🍩 <span id="current-h">0</span>m / <span id="target-h">100</span>m</div>
+        <div id="ui-height"><span id="cheat-icon">🍩</span> <span id="current-h">0</span>m / <span id="target-h">100</span>m</div>
         <div id="warning-overlay">위험 구역 도착!<br>2초 뒤 강제 문제가 출제됩니다!</div>
         <canvas id="gameCanvas"></canvas>
         <div id="gauge-container"><div id="gauge-fill"></div></div>
@@ -51,11 +53,10 @@
 
     <!-- 오른쪽 UI 패널 -->
     <div id="right-panel">
-        <!-- 수학 문제 영역 -->
         <div id="problem-area">
-            <div id="chances">남은 점프 기회: <span id="chance-count">0</span>/5</div>
+            <div id="chances">남은 점프 기회: <span id="chance-count">0</span></div>
             <div id="question-text">문제를 불러오는 중...</div>
-            <canvas id="triangle-canvas" width="200" height="150"></canvas>
+            <canvas id="triangle-canvas" width="220" height="150"></canvas>
             <div id="answer-buttons">
                 <button class="answer-btn" onclick="checkAnswer(0)">A</button>
                 <button class="answer-btn" onclick="checkAnswer(1)">B</button>
@@ -63,7 +64,6 @@
             </div>
         </div>
         
-        <!-- 조작 영역 -->
         <div id="control-area">
             <div class="d-pad">
                 <div class="ctrl-btn" id="btn-left">◀</div>
@@ -75,7 +75,7 @@
 
 <script>
 /** ==========================================
- *  1. 게임 코어 및 물리 엔진
+ *  1. 게임 코어 및 치트 시스템
  *  ========================================== */
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -98,168 +98,223 @@ let jumpChances = 0;
 let keys = { left: false, right: false, jump: false };
 let jumpChargeTime = 0;
 let isCharging = false;
-let globalWind = { force: 0, direction: 1, timer: 0 }; // 바람
+let globalWind = { force: 0, direction: 1, timer: 0 };
 let fireworks = [];
 let gameWon = false;
 
-// 플레이어 객체
+// 치트 모드 변수 (초코파이 5번 클릭)
+let cheatClicks = 0;
+let isCheatMode = false;
+document.getElementById('cheat-icon').addEventListener('touchstart', handleCheatClick);
+document.getElementById('cheat-icon').addEventListener('click', handleCheatClick);
+
+function handleCheatClick(e) {
+    e.preventDefault();
+    cheatClicks++;
+    if (cheatClicks >= 5) {
+        isCheatMode = !isCheatMode; // 치트 토글
+        cheatClicks = 0;
+        document.getElementById('cheat-icon').innerText = isCheatMode ? '🎂' : '🍩';
+        if (isCheatMode) jumpChances = '∞';
+        else jumpChances = 0;
+        updateUI();
+    }
+}
+
+/** ==========================================
+ *  2. 플레이어 객체 (디자인 및 물리)
+ *  ========================================== */
 const player = {
-    x: gameWidth / 2, y: gameHeight - 100, width: 40, height: 60,
-    vx: 0, vy: 0, speed: 4, gravity: 0.4,
+    x: gameWidth / 2, y: 0, width: 34, height: 56, // 충돌 박스 크기 및 초기화 (y는 나중에 바닥에 맞춤)
+    vx: 0, vy: 0, speed: 4.5, gravity: 0.45,
     onGround: false, isJumping: false, faceRight: true,
+    walkTick: 0, // 걷기 애니메이션용 타이머
     
     update() {
-        // 좌우 이동 (땅에 있을 때만)
         if (this.onGround && !isCharging) {
-            if (keys.left) { this.vx = -this.speed; this.faceRight = false; }
-            else if (keys.right) { this.vx = this.speed; this.faceRight = true; }
-            else { this.vx = 0; }
+            if (keys.left) { this.vx = -this.speed; this.faceRight = false; this.walkTick += 0.2; }
+            else if (keys.right) { this.vx = this.speed; this.faceRight = true; this.walkTick += 0.2; }
+            else { this.vx = 0; this.walkTick = 0; }
+        } else {
+            this.walkTick = 0; // 공중에 있거나 차지 중이면 다리 멈춤
         }
 
-        // 공중에 있을 때 바람의 영향
-        if (!this.onGround) {
-            // 특정 구역(높이)에서만 바람 적용 (예: y가 -500 ~ -1500 사이)
-            if (this.y < -500 && this.y > -1500) {
-                this.vx += globalWind.force * globalWind.direction;
-            }
+        if (!this.onGround && this.y < -500 && this.y > -2000) {
+            this.vx += globalWind.force * globalWind.direction; // 바람
         }
 
         this.vy += this.gravity;
         this.x += this.vx;
         this.y += this.vy;
 
-        // 벽 충돌 (튕기기)
-        if (this.x < 0) { this.x = 0; this.vx = Math.abs(this.vx) * 0.8; } // 왼쪽 벽 튕김
-        if (this.x + this.width > gameWidth) { this.x = gameWidth - this.width; this.vx = -Math.abs(this.vx) * 0.8; } // 오른쪽 벽 튕김
-
-        // 바닥(가장 아래) 추락 방지
-        if (this.y > gameHeight - this.height) {
-            this.y = gameHeight - this.height;
-            this.vy = 0;
-            this.vx = 0;
-            this.onGround = true;
-            this.isJumping = false;
-        } else {
-            this.onGround = false;
-        }
+        // 벽 충돌 튕기기
+        if (this.x < 0) { this.x = 0; this.vx = Math.abs(this.vx) * 0.8; }
+        if (this.x + this.width > gameWidth) { this.x = gameWidth - this.width; this.vx = -Math.abs(this.vx) * 0.8; }
     },
 
     draw() {
         ctx.save();
+        // Bounding Box의 중앙 하단 기준점을 잡음
         ctx.translate(this.x + this.width/2, this.y - cameraY + this.height/2);
-        if (!this.faceRight) ctx.scale(-1, 1); // 좌우 반전
+        if (!this.faceRight) ctx.scale(-1, 1);
         
-        // 귀여운 교복 입은 소년 그리기 (부드러운 곡선)
-        // (추후 이미지 사용 시: ctx.drawImage(playerImg, -20, -30, 40, 60); 로 교체)
-        ctx.fillStyle = "#ffccaa"; // 얼굴
-        ctx.beginPath(); ctx.arc(0, -15, 15, 0, Math.PI*2); ctx.fill();
+        // 렌더링 범위: y 기준 -28(머리 꼭대기) ~ +28(발 끝) => 총 56 높이에 맞춤
+
+        // 1. 다리 (걷기 애니메이션 반영, 진갈색 바지)
+        let legOffset = Math.sin(this.walkTick) * 6;
+        ctx.fillStyle = "#362A25"; 
+        ctx.beginPath(); ctx.roundRect(-10, 16 - legOffset, 8, 12, 2); ctx.fill(); // 왼쪽 다리
+        ctx.beginPath(); ctx.roundRect(2, 16 + legOffset, 8, 12, 2); ctx.fill(); // 오른쪽 다리
+
+        // 2. 몸통 (베이지색 마이)
+        ctx.fillStyle = "#D4C4A8";
+        ctx.beginPath(); ctx.roundRect(-14, -8, 28, 26, 4); ctx.fill();
+        
+        // 3. 셔츠 (하늘색 V넥 부분)
+        ctx.fillStyle = "#B0D0E8";
+        ctx.beginPath(); ctx.moveTo(-6, -8); ctx.lineTo(6, -8); ctx.lineTo(0, 5); ctx.fill();
+
+        // 4. 넥타이 (초록색)
+        ctx.fillStyle = "#2E5C3A";
+        ctx.beginPath(); ctx.moveTo(-2, -5); ctx.lineTo(2, -5); ctx.lineTo(3, 3); ctx.lineTo(0, 6); ctx.lineTo(-3, 3); ctx.fill();
+
+        // 5. 마이 라펠 (진갈색 포인트 깃)
+        ctx.strokeStyle = "#3B2A25";
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(-10, -8); ctx.lineTo(0, 10); ctx.lineTo(10, -8); ctx.stroke();
+        
+        // 주머니 및 단추 디테일
+        ctx.fillStyle = "#3B2A25";
+        ctx.fillRect(-12, 10, 6, 2); // 우측 주머니 포인트
+        ctx.fillRect(6, 10, 6, 2); // 좌측 주머니 포인트
+        ctx.beginPath(); ctx.arc(0, 12, 1.5, 0, Math.PI*2); ctx.fill(); // 단추 1
+
+        // 6. 머리
+        ctx.fillStyle = "#ffccaa"; // 피부
+        ctx.beginPath(); ctx.arc(0, -18, 11, 0, Math.PI*2); ctx.fill();
         ctx.fillStyle = "#111"; // 검은 머리
-        ctx.beginPath(); ctx.arc(0, -18, 16, Math.PI, Math.PI*2); ctx.fill();
-        ctx.fillStyle = "#fff"; // 교복 셔츠
-        ctx.beginPath(); ctx.roundRect(-15, 0, 30, 25, 5); ctx.fill();
-        ctx.fillStyle = "#222"; // 교복 바지
-        ctx.beginPath(); ctx.roundRect(-15, 25, 30, 15, 3); ctx.fill();
-        // 넥타이
-        ctx.fillStyle = "#e94560";
-        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-3, 15); ctx.lineTo(0, 18); ctx.lineTo(3, 15); ctx.fill();
+        ctx.beginPath(); ctx.arc(0, -20, 12, Math.PI, Math.PI*2); ctx.fill(); // 뒷머리
+        ctx.beginPath(); ctx.arc(-4, -22, 6, 0, Math.PI*2); ctx.fill(); // 앞머리 포인트
         
+        // 눈 (귀엽게)
+        ctx.fillStyle = "#000";
+        ctx.beginPath(); ctx.arc(3, -17, 1.5, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(7, -17, 1.5, 0, Math.PI*2); ctx.fill();
+
         ctx.restore();
     },
 
     jump(powerRatio) {
         if (!this.onGround) return;
-        let jumpPower = 12 + (10 * powerRatio); // 기본 점프 12 + 차지 최대 10
+        let jumpPower = 13 + (11 * powerRatio);
         this.vy = -jumpPower;
         this.onGround = false;
         this.isJumping = true;
         
-        if (keys.left) this.vx = -this.speed * (1 + powerRatio);
-        else if (keys.right) this.vx = this.speed * (1 + powerRatio);
-        else this.vx = 0; // 수직 점프
+        if (keys.left) this.vx = -this.speed * (1 + powerRatio * 1.2);
+        else if (keys.right) this.vx = this.speed * (1 + powerRatio * 1.2);
+        else this.vx = 0;
 
-        jumpChances--;
-        updateUI();
+        if (!isCheatMode) {
+            jumpChances--;
+            updateUI();
+        }
     },
 
     penaltyJump() {
-        // 오답 시 무작위 방향 강제 풀점프
-        this.vy = -20;
-        this.vx = (Math.random() - 0.5) * 15;
+        this.vy = -22;
+        this.vx = (Math.random() - 0.5) * 18;
         this.onGround = false;
         this.isJumping = true;
     }
 };
 
-// 맵 (플랫폼들)
-const platforms = [
-    { x: 0, y: gameHeight - 20, w: gameWidth, h: 20, type: 'normal' }, // 시작 바닥
-];
+/** ==========================================
+ *  3. 맵 및 충돌 (시인성/성벽 배경 강화)
+ *  ========================================== */
+const platforms = [];
 
-// 맵 생성 함수
 function generateMap() {
     let currentY = gameHeight - 150;
-    for (let i = 0; i < 50; i++) {
-        let w = 80 + Math.random() * 100;
+    // 초기 안전한 바닥 (넓고 평평하게)
+    platforms.push({ x: 0, y: gameHeight - 20, w: gameWidth, h: 40, type: 'normal' });
+    player.y = gameHeight - 20 - player.height; // 초기화 스폰 위치
+
+    for (let i = 0; i < 60; i++) {
+        let w = 70 + Math.random() * 110;
         let x = Math.random() * (gameWidth - w);
         let type = 'normal';
         
-        // 빨간 경고 블럭 (전체 맵에 3개 정도 배치)
         if (i === 15 || i === 30 || i === 45) type = 'red';
-        // 높은 곳은 눈 덮인 블럭
-        if (i > 35 && type !== 'red') type = 'snow';
+        if (i > 40 && type !== 'red') type = 'snow';
 
-        platforms.push({ x, y: currentY, w, h: 20, type: type });
-        currentY -= 120 + Math.random() * 60; // 위로 갈수록 간격 벌어짐
+        platforms.push({ x, y: currentY, w, h: 25, type: type });
+        currentY -= 110 + Math.random() * 60; 
     }
-    // 꼭대기 초코파이 목표
-    platforms.push({ x: gameWidth/2 - 40, y: currentY, w: 80, h: 20, type: 'goal' });
+    // 골인 지점
+    platforms.push({ x: gameWidth/2 - 45, y: currentY, w: 90, h: 25, type: 'goal' });
 }
 generateMap();
 
-// 충돌 처리
 function checkCollisions() {
+    let wasOnGround = player.onGround;
+    player.onGround = false;
+
     for (let p of platforms) {
-        // 천장 충돌 (아래에서 위로 부딪힐 때)
+        // 천장 충돌 (아래에서 위로)
         if (player.vy < 0 && 
             player.y > p.y + p.h && player.y + player.vy <= p.y + p.h &&
             player.x + player.width > p.x && player.x < p.x + p.w) {
             player.y = p.y + p.h;
-            player.vy = 0; // 머리 부딪히고 수직 낙하
+            player.vy = 0;
             player.vx = 0; 
         }
-        // 바닥 충돌 (위에서 아래로 떨어질 때)
-        else if (player.vy > 0 && 
-            player.y + player.height <= p.y && 
-            player.y + player.height + player.vy >= p.y &&
-            player.x + player.width > p.x && player.x < p.x + p.w) {
+        // 바닥 충돌 (위에서 아래로 정확한 판정)
+        else {
+            let prevBottom = player.y - player.vy + player.height;
+            let currentBottom = player.y + player.height;
             
-            player.y = p.y - player.height;
-            player.vy = 0;
-            player.vx = 0;
-            
-            // 빨간 블럭에 완벽히 '멈췄을' 때
-            if (p.type === 'red' && player.onGround === false) {
-                triggerRedBlockEvent();
+            // 이전 프레임에선 발판 위(또는 통과 직전)였고, 현재 프레임에선 발판 표면을 뚫고 지나갔다면
+            if (player.vy > 0 && 
+                prevBottom <= p.y + 0.1 && 
+                currentBottom >= p.y &&
+                player.x + player.width > p.x && player.x < p.x + p.w) {
+                
+                player.y = p.y - player.height; // 표면 위에 정확히 세움
+                player.vy = 0;
+                player.vx = 0;
+                player.onGround = true;
+                player.isJumping = false;
+                
+                // 빨간 블럭 이벤트
+                if (p.type === 'red' && !wasOnGround) {
+                    triggerRedBlockEvent();
+                }
+                // 골인 이벤트
+                if (p.type === 'goal' && !gameWon) {
+                    gameWon = true;
+                    triggerFireworks();
+                }
             }
-            // 목표물 도착
-            if (p.type === 'goal' && !gameWon) {
-                gameWon = true;
-                triggerFireworks();
-            }
+        }
+    }
 
-            player.onGround = true;
-            player.isJumping = false;
+    // ★ 기회가 0일 때 바닥에 착지하면 문제 출제 (버그 수정됨) ★
+    if (player.onGround && !wasOnGround) {
+        if (jumpChances === 0 && !isCheatMode) {
+            generateProblem();
         }
     }
 }
 
-// 바람 업데이트 (4~5초마다 변경)
+/** ==========================================
+ *  4. 그리기 로직 (메인 루프)
+ *  ========================================== */
 setInterval(() => {
     globalWind.direction = Math.random() > 0.5 ? 1 : -1;
-    globalWind.force = 0.05 + Math.random() * 0.1; // 바람 세기
+    globalWind.force = 0.08 + Math.random() * 0.12; 
 }, 4500);
 
-// 메인 루프
 let lastTime = 0;
 function update(time) {
     let dt = time - lastTime;
@@ -268,68 +323,87 @@ function update(time) {
     player.update();
     checkCollisions();
 
-    // 점프 차지 로직
-    if (isCharging && player.onGround && jumpChances > 0) {
+    // 점프 차지 UI
+    if (isCharging && player.onGround && (jumpChances > 0 || isCheatMode)) {
         jumpChargeTime += dt;
         if (jumpChargeTime > 1000) jumpChargeTime = 1000;
         gaugeContainer.style.display = 'block';
-        gaugeFill.style.height = (jumpChargeTime / 1000 * 100) + '%';
+        gaugeFill.style.height = (jumpChargeTime / 10) + '%';
     } else {
         gaugeContainer.style.display = 'none';
     }
 
-    // 카메라 추적 (플레이어가 화면 상단 40% 지점을 넘어가면 카메라가 따라감)
-    let targetCameraY = player.y - gameHeight * 0.4;
-    if (targetCameraY < cameraY) {
-        cameraY += (targetCameraY - cameraY) * 0.1; 
+    // 카메라 추적
+    let targetCameraY = player.y - gameHeight * 0.45;
+    if (targetCameraY < cameraY) cameraY += (targetCameraY - cameraY) * 0.15; 
+    if (player.y > cameraY + gameHeight * 0.8) cameraY = player.y - gameHeight * 0.8;
+
+    // 1. 성벽 패럴랙스 배경 그리기 (게임스러운 배경)
+    ctx.fillStyle = '#111424'; // 밤하늘 색
+    ctx.fillRect(0, 0, gameWidth, gameHeight);
+    
+    // 원경 성벽 기둥
+    ctx.fillStyle = '#181d33';
+    for(let i=0; i<gameWidth/120; i++) {
+        ctx.fillRect(i*160 + 20, 0, 80, gameHeight);
     }
-    // 떨어질 때는 부드럽게 카메라 하강
-    if (player.y > cameraY + gameHeight * 0.8) {
-        cameraY = player.y - gameHeight * 0.8;
+    // 근경 벽돌 패턴 (카메라에 맞춰 움직임)
+    ctx.strokeStyle = '#0a0d17';
+    ctx.lineWidth = 2;
+    let bgOffsetY = cameraY * 0.3; // 스크롤 속도 다르게
+    for(let y = -(bgOffsetY % 60) - 60; y < gameHeight; y += 60) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(gameWidth, y); ctx.stroke();
+        for(let x = 0; x < gameWidth; x += 80) {
+            let shift = (Math.floor(y/60)%2)*40;
+            ctx.beginPath(); ctx.moveTo(x + shift, y); ctx.lineTo(x + shift, y+60); ctx.stroke();
+        }
     }
 
-    // 그리기
-    ctx.clearRect(0, 0, gameWidth, gameHeight);
-
-    // 바람 이펙트 그리기
-    if (player.y < -500 && player.y > -1500) {
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
-        ctx.lineWidth = 2;
+    // 2. 바람 이펙트 (y: -500 ~ -2000 구간)
+    if (player.y < -500 && player.y > -2000) {
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.25)";
+        ctx.lineWidth = 3;
         ctx.beginPath();
-        for(let i=0; i<10; i++) {
-            let wx = (Date.now() / 5 * globalWind.direction + i * 50) % gameWidth;
+        for(let i=0; i<12; i++) {
+            let wx = (Date.now() / 4 * globalWind.direction + i * 60) % gameWidth;
             if (wx < 0) wx += gameWidth;
-            let wy = (Math.sin(Date.now() / 500 + i) * 20) + (i * (gameHeight/10));
-            ctx.moveTo(wx, wy); ctx.lineTo(wx + 40 * globalWind.direction, wy);
+            let wy = (Math.sin(Date.now() / 400 + i) * 30) + (i * (gameHeight/12));
+            ctx.moveTo(wx, wy); ctx.lineTo(wx + 60 * globalWind.direction, wy);
         }
         ctx.stroke();
     }
 
-    // 플랫폼 그리기
+    // 3. 발판 그리기 (시인성 대폭 개선)
     platforms.forEach(p => {
         let drawY = p.y - cameraY;
-        if (drawY < -50 || drawY > gameHeight + 50) return; // 화면 밖 렌더링 최적화
+        if (drawY < -50 || drawY > gameHeight + 50) return;
+
+        // 몸통 그림자 및 입체감
+        ctx.fillStyle = '#222831';
+        ctx.fillRect(p.x, drawY + 8, p.w, p.h - 8);
 
         if (p.type === 'normal') {
-            ctx.fillStyle = '#2a3d66'; // 성벽 느낌
-            ctx.fillRect(p.x, drawY, p.w, p.h);
-            ctx.fillStyle = '#1f2d4d';
-            ctx.fillRect(p.x, drawY + 10, p.w, 10);
+            // 형광 연두빛 윗면 (밟는 곳 명확히)
+            ctx.fillStyle = '#76B947'; 
+            ctx.fillRect(p.x, drawY, p.w, 8);
+            ctx.fillStyle = '#558732'; // 테두리 디테일
+            ctx.fillRect(p.x, drawY+8, p.w, 3);
         } else if (p.type === 'red') {
-            ctx.fillStyle = '#ff2e4c'; // 경고 블럭
+            ctx.fillStyle = '#ff2e4c';
             ctx.fillRect(p.x, drawY, p.w, p.h);
+            ctx.fillStyle = '#ffb3ba'; // 밝은 윗면
+            ctx.fillRect(p.x, drawY, p.w, 6);
         } else if (p.type === 'snow') {
             ctx.fillStyle = '#4a5d86';
-            ctx.fillRect(p.x, drawY, p.w, p.h);
-            ctx.fillStyle = '#ffffff'; // 눈
-            ctx.fillRect(p.x, drawY, p.w, 5);
+            ctx.fillRect(p.x, drawY + 6, p.w, p.h - 6);
+            ctx.fillStyle = '#ffffff'; // 하얀 눈 윗면
+            ctx.fillRect(p.x, drawY, p.w, 8);
         } else if (p.type === 'goal') {
-            // 빛나는 초코파이
             ctx.shadowBlur = 20; ctx.shadowColor = "#ffcc00";
-            ctx.fillStyle = '#4b382a'; // 초콜릿 색
-            ctx.beginPath(); ctx.arc(p.x + p.w/2, drawY, 15, 0, Math.PI*2); ctx.fill();
-            ctx.fillStyle = '#fff'; // 마시멜로
-            ctx.fillRect(p.x + p.w/2 - 8, drawY - 2, 16, 4);
+            ctx.fillStyle = '#4b382a';
+            ctx.beginPath(); ctx.arc(p.x + p.w/2, drawY, 20, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(p.x + p.w/2 - 10, drawY - 2, 20, 5);
             ctx.shadowBlur = 0;
         }
     });
@@ -337,9 +411,9 @@ function update(time) {
     player.draw();
     drawFireworks();
 
-    // 높이 UI 업데이트 (초기 위치를 0m로 계산)
-    let currentHeightM = Math.floor(Math.max(0, (gameHeight - 100 - player.y) / 50));
-    let targetHeightM = Math.floor((gameHeight - 100 - platforms[platforms.length-1].y) / 50);
+    // 4. 높이 텍스트 업데이트
+    let currentHeightM = Math.floor(Math.max(0, (gameHeight - 20 - player.y) / 50));
+    let targetHeightM = Math.floor((gameHeight - 20 - platforms[platforms.length-1].y) / 50);
     document.getElementById('current-h').innerText = currentHeightM;
     document.getElementById('target-h').innerText = targetHeightM;
 
@@ -347,7 +421,7 @@ function update(time) {
 }
 
 /** ==========================================
- *  2. 조작부 (터치 및 키보드)
+ *  5. 조작부 이벤트
  *  ========================================== */
 function setupControls() {
     const bindTouch = (id, key) => {
@@ -361,7 +435,7 @@ function setupControls() {
     const jumpBtn = document.getElementById('jump-btn');
     const startJump = (e) => {
         if(e) e.preventDefault();
-        if (player.onGround && !isCharging && jumpChances > 0) {
+        if (player.onGround && !isCharging && (jumpChances > 0 || isCheatMode)) {
             isCharging = true;
             jumpChargeTime = 0;
             jumpBtn.style.transform = 'scale(0.9)';
@@ -380,7 +454,6 @@ function setupControls() {
     jumpBtn.addEventListener('touchstart', startJump);
     jumpBtn.addEventListener('touchend', endJump);
 
-    // 키보드 지원
     window.addEventListener('keydown', (e) => {
         if (e.code === 'ArrowLeft') keys.left = true;
         if (e.code === 'ArrowRight') keys.right = true;
@@ -395,31 +468,27 @@ function setupControls() {
 setupControls();
 
 /** ==========================================
- *  3. 삼각비 문제 생성기 (중3 수준)
+ *  6. 문제 생성 및 로직
  *  ========================================== */
 let currentCorrectIndex = -1;
-let currentProblemType = 0;
 let problemData = {};
 
 function generateProblem() {
-    // 기회가 남아있으면 새 문제 안 줌
-    if (jumpChances > 0) return;
+    if (jumpChances > 0 && !isCheatMode) return; // 치트나 기회있을 땐 생성 안함
 
     const btns = document.querySelectorAll('.answer-btn');
     btns.forEach(btn => btn.disabled = false);
 
-    let type = Math.floor(Math.random() * 3); // 0, 1, 2
+    let type = Math.floor(Math.random() * 3);
     let qText = "";
     let answers = [];
     let correctAns = "";
 
-    // 피타고라스 수 목록
     const pythagorean = [
         {a: 3, b: 4, c: 5}, {a: 5, b: 12, c: 13}, {a: 8, b: 15, c: 17}, {a: 6, b: 8, c: 10}
     ];
 
     if (type === 0) {
-        // 유형 1: 세 변이 주어졌을 때 sin, cos, tan 구하기
         let tri = pythagorean[Math.floor(Math.random() * pythagorean.length)];
         let isSin = Math.random() > 0.5;
         let funcName = isSin ? "sin A" : "cos A";
@@ -429,7 +498,6 @@ function generateProblem() {
         problemData = { a: tri.a, b: tri.b, c: tri.c, angleA: "A", angleB: "B" };
     } 
     else if (type === 1) {
-        // 유형 2: 특수각의 삼각비 값
         const specialAngles = [
             { angle: 30, sin: "1/2", cos: "√3/2", tan: "√3/3" },
             { angle: 45, sin: "√2/2", cos: "√2/2", tan: "1" },
@@ -441,15 +509,14 @@ function generateProblem() {
         qText = `${choice} ${sa.angle}° 의 값은?`;
         correctAns = sa[choice];
         answers = ["1/2", "√2/2", "√3/2", "1", "√3", "√3/3"];
-        problemData = null; // 도형 안그림
+        problemData = null; 
     }
     else {
-        // 유형 3: 특수각 직각삼각형에서 한 변의 길이 구하기
         let angles = [30, 45, 60];
         let ang = angles[Math.floor(Math.random() * angles.length)];
-        let hypotenuse = (Math.floor(Math.random() * 5) + 2) * 2; // 짝수 빗변
+        let hypotenuse = (Math.floor(Math.random() * 5) + 2) * 2; 
         
-        qText = `∠B = 90°, ∠A = ${ang}° 이고 빗변이 ${hypotenuse}일 때, 높이(a)의 길이는?`;
+        qText = `∠B = 90°, ∠A = ${ang}° 이고 빗변이 ${hypotenuse}일 때, 높이(a)는?`;
         if (ang === 30) correctAns = String(hypotenuse / 2);
         if (ang === 45) correctAns = `${hypotenuse/2}√2`;
         if (ang === 60) correctAns = `${hypotenuse/2}√3`;
@@ -460,7 +527,6 @@ function generateProblem() {
 
     document.getElementById('question-text').innerText = qText;
     
-    // 정답 및 오답 섞기 (중복 제거)
     answers = [...new Set(answers)];
     let finalAnswers = [correctAns];
     while(finalAnswers.length < 3) {
@@ -470,98 +536,87 @@ function generateProblem() {
     finalAnswers.sort(() => Math.random() - 0.5);
     currentCorrectIndex = finalAnswers.indexOf(correctAns);
 
-    for(let i=0; i<3; i++) {
-        btns[i].innerText = finalAnswers[i];
-    }
+    for(let i=0; i<3; i++) btns[i].innerText = finalAnswers[i];
 
     drawTriangleBox(problemData);
 }
 
 function checkAnswer(index) {
-    if (jumpChances > 0) return; // 이미 기회가 있으면 무시
+    if (jumpChances > 0 || isCheatMode) return; 
     
     const btns = document.querySelectorAll('.answer-btn');
-    btns.forEach(btn => btn.disabled = true); // 중복 클릭 방지
+    btns.forEach(btn => btn.disabled = true); 
 
     if (index === currentCorrectIndex) {
-        // 정답
         jumpChances = 5;
         updateUI();
-        document.getElementById('question-text').innerText = "정답입니다! 점프 기회 5회를 얻었습니다. (버튼을 꾹 눌러 점프!)";
+        document.getElementById('question-text').innerText = "정답입니다! 점프 기회 5회를 얻었습니다.";
     } else {
-        // 오답
-        document.getElementById('question-text').innerText = "오답입니다! 벌칙으로 무작위 강제 점프합니다!";
+        document.getElementById('question-text').innerText = "오답입니다! 벌칙으로 강제 점프합니다!";
         player.penaltyJump();
-        // 2초 뒤 새 문제
-        setTimeout(generateProblem, 2000);
+        // 땅에 닿으면 update 루프 안에서 다시 generateProblem이 트리거됨
     }
 }
 
-// 캔버스에 삼각비에 맞춘 실제 비율의 삼각형 그리기
 function drawTriangleBox(data) {
     const tCanvas = document.getElementById('triangle-canvas');
     const tCtx = tCanvas.getContext('2d');
     tCtx.clearRect(0, 0, tCanvas.width, tCanvas.height);
 
-    if (!data) return; // 특수각 단순 묻기 문제는 안 그림
+    if (!data) return;
 
     tCtx.strokeStyle = "black";
     tCtx.lineWidth = 2;
     tCtx.fillStyle = "black";
-    tCtx.font = "16px Arial";
+    tCtx.font = "16px Pretendard";
 
     let w = tCanvas.width;
     let h = tCanvas.height;
     
     let a, b;
     if (data.angle) {
-        // 특수각에 따른 비율
         let rad = data.angle * Math.PI / 180;
-        b = 100; // 밑변 기준
+        b = 100; 
         a = b * Math.tan(rad);
     } else {
         b = data.b * 10;
         a = data.a * 10;
     }
 
-    // 스케일 및 중앙 정렬 조정
-    let scale = Math.min((w-40)/b, (h-40)/a);
+    let scale = Math.min((w-60)/b, (h-40)/a);
     let drawW = b * scale;
     let drawH = a * scale;
     let offsetX = (w - drawW) / 2;
-    let offsetY = h - (h - drawH) / 2;
+    let offsetY = h - (h - drawH) / 2 - 10;
 
     tCtx.beginPath();
-    tCtx.moveTo(offsetX, offsetY); // 직각 부분 (C)
-    tCtx.lineTo(offsetX + drawW, offsetY); // 밑변 끝 (A)
-    tCtx.lineTo(offsetX, offsetY - drawH); // 높이 끝 (B)
+    tCtx.moveTo(offsetX, offsetY); 
+    tCtx.lineTo(offsetX + drawW, offsetY); 
+    tCtx.lineTo(offsetX, offsetY - drawH); 
     tCtx.closePath();
     tCtx.stroke();
-
-    // 직각 표시
     tCtx.strokeRect(offsetX, offsetY - 10, 10, 10);
 
-    // 텍스트 라벨
     if (data.a && data.b) {
-        tCtx.fillText(`c=${data.c}`, offsetX + drawW/2 + 5, offsetY - drawH/2);
+        tCtx.fillText(`c=${data.c}`, offsetX + drawW/2 + 10, offsetY - drawH/2);
         tCtx.fillText(`a=${data.a}`, offsetX - 35, offsetY - drawH/2);
         tCtx.fillText(`b=${data.b}`, offsetX + drawW/2 - 10, offsetY + 20);
         tCtx.fillText("A", offsetX + drawW + 5, offsetY + 5);
-        tCtx.fillText("B", offsetX - 5, offsetY - drawH - 5);
+        tCtx.fillText("B", offsetX - 15, offsetY + 5);
     } else if (data.angle) {
-        tCtx.fillText(`${data.angle}°`, offsetX + drawW - 30, offsetY - 5);
-        tCtx.fillText(data.hyp, offsetX + drawW/2 + 5, offsetY - drawH/2);
-        tCtx.fillText("a = ?", offsetX - 40, offsetY - drawH/2);
+        tCtx.fillText(`${data.angle}°`, offsetX + drawW - 35, offsetY - 5);
+        tCtx.fillText(data.hyp, offsetX + drawW/2 + 10, offsetY - drawH/2);
+        tCtx.fillText("a = ?", offsetX - 45, offsetY - drawH/2);
     }
 }
 
 function updateUI() {
-    document.getElementById('chance-count').innerText = jumpChances;
+    document.getElementById('chance-count').innerText = isCheatMode ? '∞' : jumpChances;
     const jumpBtn = document.getElementById('jump-btn');
-    if (jumpChances <= 0) {
+    if (jumpChances <= 0 && !isCheatMode) {
         jumpBtn.style.background = '#555';
         jumpBtn.style.borderColor = '#333';
-        if(player.onGround) generateProblem();
+        // 이 부분에 있던 generateProblem() 호출을 없애고 checkCollisions(착지 시점)로 넘김
     } else {
         jumpBtn.style.background = '#e94560';
         jumpBtn.style.borderColor = '#ff2e4c';
@@ -569,35 +624,33 @@ function updateUI() {
 }
 
 /** ==========================================
- *  4. 특수 이벤트 (빨간 블럭, 폭죽)
+ *  7. 특수 이벤트 처리
  *  ========================================== */
 function triggerRedBlockEvent() {
-    // 2~3개 배치된 빨간 블럭에 '멈췄을' 때
     const overlay = document.getElementById('warning-overlay');
     overlay.style.display = 'flex';
-    keys = { left: false, right: false, jump: false }; // 조작 잠금
-    jumpChances = 0; // 기회 초기화
+    keys = { left: false, right: false, jump: false };
+    if(!isCheatMode) jumpChances = 0;
     
     setTimeout(() => {
         overlay.style.display = 'none';
-        generateProblem();
-        // 10초 타이머 (단순화를 위해 여기선 별도 UI 없이 10초 뒤 못풀면 패널티)
+        if(!isCheatMode) generateProblem();
+        
         let timer = setTimeout(() => {
-            if(jumpChances === 0) {
+            if(jumpChances === 0 && !isCheatMode && player.onGround) {
                 document.getElementById('question-text').innerText = "시간 초과! 강제 점프합니다!";
                 player.penaltyJump();
-                setTimeout(generateProblem, 2000);
             }
         }, 10000);
     }, 2000);
 }
 
 function triggerFireworks() {
-    for(let i=0; i<50; i++) {
+    for(let i=0; i<60; i++) {
         fireworks.push({
-            x: gameWidth/2, y: cameraY - 100, // 초코파이 근처
-            vx: (Math.random() - 0.5) * 10, vy: (Math.random() - 0.5) * 10,
-            color: `hsl(${Math.random()*360}, 100%, 50%)`, life: 1.0
+            x: gameWidth/2, y: cameraY - 100, 
+            vx: (Math.random() - 0.5) * 12, vy: (Math.random() - 0.5) * 12,
+            color: `hsl(${Math.random()*360}, 100%, 60%)`, life: 1.0
         });
     }
 }
@@ -605,23 +658,24 @@ function triggerFireworks() {
 function drawFireworks() {
     for(let i=fireworks.length-1; i>=0; i--) {
         let f = fireworks[i];
-        f.x += f.vx; f.y += f.vy; f.life -= 0.02;
+        f.x += f.vx; f.y += f.vy; f.life -= 0.015;
         ctx.fillStyle = f.color;
         ctx.globalAlpha = Math.max(0, f.life);
-        ctx.beginPath(); ctx.arc(f.x, f.y - cameraY, 4, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(f.x, f.y - cameraY, 5, 0, Math.PI*2); ctx.fill();
         ctx.globalAlpha = 1.0;
         if(f.life <= 0) fireworks.splice(i, 1);
     }
     if (gameWon) {
         ctx.fillStyle = "white";
-        ctx.font = "40px Pretendard";
+        ctx.font = "bold 40px Pretendard";
         ctx.textAlign = "center";
-        ctx.fillText("🎉 축하합니다! 꼭대기 도달! 🎉", gameWidth/2, gameHeight/2);
+        ctx.fillText("🎉 축하합니다! 꼭대기 도달! 🎉", gameWidth/2, gameHeight/2 - 50);
         ctx.textAlign = "left";
     }
 }
 
-// 게임 시작
+// 게임 시작 초기화
+updateUI();
 generateProblem();
 requestAnimationFrame(update);
 
